@@ -259,3 +259,24 @@ fun cos(d: Dual): Dual = d.function({ cos(it) }) { -sin(it) }
 fun pow(d: Dual, n: Double): Dual = d.function({ it.pow(n) }) { n * pow(it, n - 1) }
 fun sqrt(d: Dual): Dual = d.function({ sqrt(it) }) { (Dual.const(1.0, d.size) / (Dual.const(2.0, d.size) * sqrt(it))) }
 fun Dual.sqr() = this * this
+
+// Sign-non-zero function from the SymForce paper.
+// Roadrunner uses this instead of the approximation method for sin(x)/x,
+// And it is cleaner in my opinion.
+
+fun signNonZero(a: Double): Double {
+    if (a >= 0.0) {
+        return 1.0;
+    }
+
+    return -1.0;
+}
+
+fun snzEps(a: Double): Double {
+    if (a >= 0.0)
+    {
+        return 2.2e-15;
+    }
+
+    return -2.2e-15;
+}
