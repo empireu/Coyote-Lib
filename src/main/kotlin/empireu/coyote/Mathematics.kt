@@ -1,0 +1,261 @@
+package empireu.coyote
+
+import com.sun.org.apache.xalan.internal.lib.ExsltMath.abs
+import kotlin.math.*
+
+/**
+ * Maps [v] from a source range to a destination range.
+ * @param srcMin The minimum value in [v]'s range.
+ * @param srcMax The maximum value in [v]'s range.
+ * @param dstMin The resulting range minimum.
+ * @param dstMax The resulting range maximum.
+ * @return [v] mapped from the source range to the destination range.
+ * */
+fun map(v: Double, srcMin: Double, srcMax: Double, dstMin: Double, dstMax: Double): Double {
+    return dstMin + (v - srcMin) * (dstMax - dstMin) / (srcMax - srcMin)
+}
+
+fun Double.mappedTo(srcMin: Double, srcMax: Double, dstMin: Double, dstMax: Double): Double {
+    return map(this, srcMin, srcMax, dstMin, dstMax)
+}
+
+/**
+ * Linearly interpolates [a] to [b] using the 0-1 parameter [factor].
+ * **The [factor] is not clamped implicitly!**
+ * */
+fun lerp(a: Double, b: Double, factor: Double): Double {
+    return (1.0 - factor) * a + factor * b
+}
+
+fun approxEqual(a: Double, b: Double, epsilon: Double = 10e-6): Boolean =
+    abs(a - b) < epsilon
+
+fun Double.approxEquals(other: Double, epsilon: Double = 10e-6): Boolean =
+    approxEqual(this, other, epsilon)
+
+fun Double.sqrt() = kotlin.math.sqrt(this)
+
+infix fun Double.approxEquals(other: Double): Boolean = approxEqual(this, other, 10e-6)
+
+/**
+ * Returns the max of [a] and [b].
+ * If both values are [Double.NaN], an error is produced.
+ * If [a] is [Double.NaN], [b] is returned.
+ * If [b] is [Double.NaN], [a] is returned.
+ * */
+fun maxNaN(a: Double, b: Double): Double {
+    if (a.isNaN() && b.isNaN()) {
+        error("Both a and b were NaN")
+    }
+
+    if (a.isNaN()) {
+        return b
+    }
+
+    if (b.isNaN()) {
+        return a
+    }
+
+    return max(a, b)
+}
+
+/**
+ * Returns the min of [a] and [b].
+ * If both values are [Double.NaN], an error is produced.
+ * If [a] is [Double.NaN], [b] is returned.
+ * If [b] is [Double.NaN], [a] is returned.
+ * */
+fun minNaN(a: Double, b: Double): Double {
+    if (a.isNaN() && b.isNaN()) {
+        error("Both a and b were NaN")
+    }
+
+    if (a.isNaN()) {
+        return b
+    }
+
+    if (b.isNaN()) {
+        return a
+    }
+
+    return min(a, b)
+}
+
+/**
+ * Throws an error if [this] is [Double.NaN]
+ * */
+fun Double.throwIfNan(): Double {
+    if (this.isNaN()) {
+        error("Value is NaN")
+    }
+
+    return this
+}
+
+fun Double.sqr(): Double = this * this
+
+/**
+ * Returns [this] with the specified [sign].
+ * */
+fun Double.signed(sign: Double): Double {
+    this.throwIfNan()
+    sign.throwIfNan()
+
+    if (this == 0.0 || sign == 0.0) {
+        return 0.0
+    }
+
+    return if (sign(this) != sign(sign))
+        -this
+    else this
+}
+
+fun Double.rounded(decimals: Int = 3): Double {
+    var multiplier = 1.0
+    repeat(decimals) { multiplier *= 10 }
+    return round(this * multiplier) / multiplier
+}
+
+data class Range(val min: Double, val max: Double) {
+    // maybe allow infinite here?
+
+    companion object {
+        val R = Range(Double.MIN_VALUE, Double.MAX_VALUE)
+    }
+
+    override fun toString(): String {
+        return "$min:$max"
+    }
+
+    val isValid get() = min.isFinite() && max.isFinite() && min < max
+}
+
+fun intersect(r1: Range, r2: Range): Range = Range(max(r1.min, r2.min), min(r1.max, r2.max))
+
+class Dual private constructor(private val values: DoubleArray) {
+    /**
+     * Constructs a [Dual] from the value [x] and the [tail].
+     * */
+    constructor(x: Double, tail: Dual): this(
+        DoubleArray(tail.values.size + 1).also {
+            it[0] = x
+
+            for (i in 0 until tail.values.size) {
+                it[i + 1] = tail.values[i]
+            }
+        }
+    )
+
+    operator fun get(index: Int) = values[index]
+
+    val size get() = values.size
+    val isReal get() = values.size == 1
+    val value get() = values[0]
+
+    /**
+     * Gets the values at the start of the [Dual], ignoring the last [n] values.
+     * */
+    fun head(n: Int = 1) = Dual(DoubleArray(size - n) { values[it] })
+
+    /**
+     * Gets the values at the end of the [Dual], ignoring the first [n] values.
+     * */
+    fun tail(n: Int = 1) = Dual(DoubleArray(size - n) { values[it + n] })
+
+    operator fun unaryPlus(): Dual {
+        return this
+    }
+
+    operator fun unaryMinus() = Dual(
+        DoubleArray(size).also {
+            for (i in it.indices){
+                it[i] = -this[i]
+            }
+        }
+    )
+
+    operator fun plus(other: Dual): Dual =
+        if (this.isReal || other.isReal) const(this[0] + other[0])
+        else Dual(this.value + other.value, this.tail() + other.tail())
+
+    operator fun minus(other: Dual): Dual =
+        if (this.isReal || other.isReal) const(this[0] - other[0])
+        else Dual(this.value - other.value, this.tail() - other.tail())
+
+    operator fun times(other: Dual): Dual =
+        if (this.isReal || other.isReal) const(this[0] * other[0])
+        else Dual(this.value * other.value, this.tail() * other.head() + this.head() * other.tail())
+
+    operator fun div(other: Dual): Dual =
+        if (this.isReal || other.isReal) const(this[0] / other[0])
+        else Dual(this.value / other.value, (this.tail() * other - this * other.tail()) / (other * other))
+
+    inline fun function(x: ((Double) -> Double), dxFront: ((Dual) -> Dual)): Dual =
+        if (this.isReal) const(x(this.value))
+        else Dual(x(this.value), dxFront(this.head()) * this.tail())
+
+    operator fun plus(const: Double) = Dual(values.clone().also { it[0] += const })
+    operator fun minus(const: Double) = Dual(values.clone().also { it[0] -= const })
+
+    private inline fun mapValues(transform: ((Double) -> Double)) = Dual(DoubleArray(values.size) { i -> transform(values[i])})
+    operator fun times(constant: Double) = mapValues { v -> v * constant }
+    operator fun div(constant: Double) = mapValues { v -> v / constant }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other){
+            return true
+        }
+
+        if (javaClass != other?.javaClass) {
+            return false
+        }
+
+        other as Dual
+
+        if (!values.contentEquals(other.values)){
+            return false
+        }
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        return values.contentHashCode()
+    }
+
+    override fun toString(): String {
+        if(values.isEmpty()) {
+            return "empty"
+        }
+
+        return values
+            .mapIndexed { i, v -> "x$i=$v" }
+            .joinToString(", ")
+    }
+
+    companion object {
+        fun const(x: Double, n: Int = 1) = Dual(DoubleArray(n).also { it[0] = x })
+
+        fun variable(v: Double, n: Int = 1) = Dual(
+            DoubleArray(n).also {
+                it[0] = v;
+                if(n > 1){
+                    it[1] = 1.0
+                }
+            }
+        )
+
+        fun of(vararg values: Double) = Dual(values.asList().toDoubleArray())
+    }
+}
+
+operator fun Double.plus(dual: Dual) = Dual.const(this, dual.size) + dual
+operator fun Double.minus(dual: Dual) = Dual.const(this, dual.size) - dual
+operator fun Double.times(dual: Dual) = Dual.const(this, dual.size) * dual
+operator fun Double.div(dual: Dual) = Dual.const(this, dual.size) / dual
+
+fun sin(d: Dual): Dual = d.function({ sin(it) }) { cos(it) }
+fun cos(d: Dual): Dual = d.function({ cos(it) }) { -sin(it) }
+fun pow(d: Dual, n: Double): Dual = d.function({ it.pow(n) }) { n * pow(it, n - 1) }
+fun sqrt(d: Dual): Dual = d.function({ sqrt(it) }) { (Dual.const(1.0, d.size) / (Dual.const(2.0, d.size) * sqrt(it))) }
+fun Dual.sqr() = this * this
