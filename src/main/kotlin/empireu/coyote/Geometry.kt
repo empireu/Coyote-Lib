@@ -385,6 +385,8 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
     }
 }
 
+data class CurvePose2d(val pose: Pose2d, val curvature: Double)
+
 fun interpolate(a: Pose2d, b: Pose2d, t: Double) = Pose2d(lerp(a.translation, b.translation, t), interpolate(a.rotation, b.rotation, t))
 
 data class Pose2dDual(val translation: Vector2dDual, val rotation: Rotation2dDual) {
@@ -416,4 +418,146 @@ data class Pose2dDual(val translation: Vector2dDual, val rotation: Rotation2dDua
     operator fun times(b: Pose2d) = Pose2dDual(this.translation + this.rotation * b.translation, this.rotation * b.rotation)
     operator fun div(b: Pose2dDual) = b.inverse * this
     operator fun plus(incr: Twist2dIncr) = this * Pose2d.exp(incr)
+}
+
+class VectorKd internal constructor(private val values: DoubleArray) {
+    companion object {
+        fun ofArray(values: DoubleArray): VectorKd {
+            return VectorKd(values.clone())
+        }
+
+        fun ofList(values: List<Double>): VectorKd {
+            return VectorKd(values.toDoubleArray())
+        }
+
+        fun of(vararg values: Double): VectorKd {
+            return VectorKd(values.asList().toDoubleArray())
+        }
+    }
+
+    init {
+        require(values.isNotEmpty())
+    }
+
+    val size = values.size
+
+    operator fun get(index: Int) = values[index]
+
+    operator fun unaryPlus() = VectorKd(values.map { +it }.toDoubleArray())
+    operator fun unaryMinus() = VectorKd(values.map { -it }.toDoubleArray())
+
+    operator fun plus(other: VectorKd): VectorKd {
+        validate(this, other)
+
+        val results = DoubleArray(size)
+
+        for (i in 0 until size) {
+            results[i] = values[i] + other.values[i]
+        }
+
+        return VectorKd(results)
+    }
+
+    operator fun minus(other: VectorKd): VectorKd {
+        validate(this, other)
+
+        val results = DoubleArray(size)
+
+        for (i in 0 until size) {
+            results[i] = values[i] - other.values[i]
+        }
+
+        return VectorKd(results)
+    }
+
+    operator fun times(scalar: Double): VectorKd {
+        val results = DoubleArray(size)
+
+        for (i in 0 until size) {
+            results[i] = values[i] * scalar
+        }
+
+        return VectorKd(results)
+    }
+
+    operator fun div(scalar: Double): VectorKd {
+        val results = DoubleArray(size)
+
+        for (i in 0 until size) {
+            results[i] = values[i] / scalar
+        }
+
+        return VectorKd(results)
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (other !is VectorKd) {
+            return false
+        }
+
+        return values contentEquals other.values
+    }
+
+    fun equals(other: VectorKd): Boolean {
+        return values contentEquals other.values
+    }
+
+    override fun hashCode(): Int {
+        return values.contentHashCode()
+    }
+}
+
+fun kdVectorOf(vararg values: Double): VectorKd {
+    return VectorKd(values.asList().toDoubleArray())
+}
+
+fun distanceSqr(a: VectorKd, b: VectorKd): Double {
+    validate(a, b)
+
+    var result = 0.0
+
+    for (i in 0 until a.size) {
+        val d = a[i] - b[i]
+
+        result += d * d
+    }
+
+    return result
+}
+
+fun distance(a: VectorKd, b: VectorKd) = distanceSqr(a, b).sqrt()
+
+/**
+ * Validates that [vector] has the [requiredSize].
+ * */
+fun validate(vector: VectorKd, requiredSize: Int) {
+    require(vector.size == requiredSize)
+}
+
+/**
+ * Validates that [a] has the same size as [b].
+ * */
+fun validate(a: VectorKd, b: VectorKd) {
+    require(a.size == b.size)
+}
+
+/**
+ * Validates that the vectors have the same size.
+ * */
+fun validate(a: VectorKd, b: VectorKd, c: VectorKd, d: VectorKd, e: VectorKd, f: VectorKd) {
+    require(a.size == b.size && b.size == c.size && c.size == d.size && d.size == e.size && e.size == f.size)
+}
+
+fun Double.toKdVector() : VectorKd {
+    return kdVectorOf(this)
+}
+
+fun Vector2d.toKdVec(): VectorKd {
+    return kdVectorOf(this.x, this.y)
+}
+
+fun VectorKd.toVector2d(): Vector2d {
+    validate(this, 2)
+
+    return Vector2d(this[0], this[1])
 }
