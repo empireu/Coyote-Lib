@@ -7,7 +7,6 @@ class FnvStream {
     fun add(b: UByte) {
         result = result xor b.toLong()
         result *= prime
-        println(b)
     }
 
     fun add(long: Long) {
@@ -38,5 +37,12 @@ class FnvStream {
     companion object {
         private val basisOffset: Long = java.lang.Long.parseUnsignedLong("14695981039346656037")
         private const val prime: Long = 1099511628211
+    }
+}
+
+fun List<CurvePose2d>.hashScan(stream: FnvStream) {
+    this.forEach { cp ->
+        stream.add(cp.pose)
+        stream.add(cp.curvature)
     }
 }

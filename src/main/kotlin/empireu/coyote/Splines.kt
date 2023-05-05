@@ -479,7 +479,7 @@ class QuinticSplineMappedBuilder(val size: Int) {
 /**
  * Projects the given [position] onto the spline using an initial rough estimate, found by sampling [projectionSamples] points and
  * selecting the closest one, then optimizing the estimate using "Binary Descent" in [descentSteps] steps using the specified
- * hyper-parameter [descentFalloff].
+ * hyperparameter [descentFalloff].
  *
  * @return The internal spline parameter whose position is closest to [position].
  * */
