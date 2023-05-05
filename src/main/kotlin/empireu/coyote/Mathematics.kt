@@ -116,6 +116,9 @@ fun Double.rounded(decimals: Int = 3): Double {
     return round(this * multiplier) / multiplier
 }
 
+fun Double.minWith(other: Double) = min(this, other)
+fun Double.maxWith(other: Double) = max(this, other)
+
 data class Range(val min: Double, val max: Double) {
     // maybe allow infinite here?
 
