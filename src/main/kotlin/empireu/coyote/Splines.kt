@@ -57,13 +57,6 @@ object Splines {
         return h0 * p0 + h1 * v0 + h2 * a0 + h3 * a1 + h4 * v1 + h5 * p1
     }
 
-    fun hermiteQuintic2d(p0: Vector2d, v0: Vector2d, a0: Vector2d, a1: Vector2d, v1: Vector2d, p1: Vector2d, t: Double): Vector2d {
-        return Vector2d(
-            hermiteQuintic(p0.x, v0.x, a0.x, a1.x, v1.x, p1.x, t),
-            hermiteQuintic(p0.y, v0.y, a0.y, a1.y, v1.y, p1.y, t)
-        )
-    }
-
     fun hermiteQuintic2dDerivative1(p0: Vector2d, v0: Vector2d, a0: Vector2d, a1: Vector2d, v1: Vector2d, p1: Vector2d, t: Double): Vector2d {
         return Vector2d(
             hermiteQuinticDerivative1(p0.x, v0.x, a0.x, a1.x, v1.x, p1.x, t),

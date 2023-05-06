@@ -258,4 +258,79 @@ fun loadTrajectory(motionProject: JsonMotionProject): EditorTrajectory {
 }
 
 
+data class BehaviorCreateContext(
+    val name: String,
+    val runOnce: Boolean,
+    val savedData: String,
+    val children: Map<Int, List<BehaviorNode>>
+) {
+    val subNodes get() = children.flatMap { it.value }
+
+    fun validateSubNodes(required: Int) : BehaviorCreateContext {
+        require(subNodes.size == required) { "Failed to get required number of sub nodes" }
+
+        return this
+    }
+
+    fun validateTerminals(required: Int) : BehaviorCreateContext {
+        require(children.size == required) { "Failed to get required number of terminals " }
+
+        return this
+    }
+
+    fun one() = this.validateSubNodes(1).subNodes.first()
+}
+
+fun interface IBehaviorFactory {
+    fun create(context: BehaviorCreateContext): BehaviorNode
+}
+
+class BehaviorMapBuilder {
+    private val factories = HashMap<String, IBehaviorFactory>()
+
+    fun add(name: String, factory: IBehaviorFactory): BehaviorMapBuilder {
+        if(factories.containsKey(name)) {
+            error("Duplicate node $name")
+        }
+
+        factories[name] = factory
+
+        return this
+    }
+
+    fun build() = BehaviorMap(factories.toMap())
+}
+
+data class BehaviorMap(val behaviors: Map<String, IBehaviorFactory>)
+
+fun loadBehavior(root: JsonNode, behaviorMap: BehaviorMap) : BehaviorNode {
+    val factory = behaviorMap.behaviors[root.BehaviorId]
+        ?: error("Behavior with ID ${root.BehaviorId} is not registered")
+
+    return factory.create(
+        BehaviorCreateContext(
+            root.Name,
+            root.ExecuteOnce,
+            root.SavedData,
+            root.Children.let {
+                val map = HashMap<Int, ArrayList<BehaviorNode>>()
+
+                it.forEach { child ->
+                    val node = loadBehavior(child.Node, behaviorMap)
+
+                    if(map.containsKey(child.TerminalId)) {
+                        map[child.TerminalId]!!.add(node)
+                    }
+                    else{
+                        map[child.TerminalId] = arrayListOf(node)
+                    }
+                }
+
+                return@let map.toMap()
+            }
+        )
+    )
+}
+
+
 
