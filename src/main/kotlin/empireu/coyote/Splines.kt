@@ -209,7 +209,7 @@ private fun IKDSpline.require2() {
 
 interface Percentage
 
-class QuinticSpline(private val segments: List<QuinticSplineSegment>) :
+class QuinticSpline(val segments: List<QuinticSplineSegment>) :
     IPositionSpline<Percentage>,
     IVelocitySpline<Percentage>,
     IAccelerationSpline<Percentage>,
@@ -278,6 +278,17 @@ class QuinticSpline(private val segments: List<QuinticSplineSegment>) :
         }
 
         return result
+    }
+}
+
+fun QuinticSpline.hashScan(stream: FnvStream) {
+    this.segments.forEach {
+        stream.add(it.p0)
+        stream.add(it.v0)
+        stream.add(it.a0)
+        stream.add(it.a1)
+        stream.add(it.v1)
+        stream.add(it.p1)
     }
 }
 

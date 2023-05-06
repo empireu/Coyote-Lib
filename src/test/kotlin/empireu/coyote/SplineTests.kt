@@ -38,7 +38,7 @@ class SplineTests {
             Twist2dIncr(0.0001, 0.0001, 0.0001)
         )
 
-        points.map { it.curvePose }.hashScan(stream)
+        points.map { it.curvePose }.hashScanPath(stream)
 
         assert(stream.result == 4368584110474596548)
     }

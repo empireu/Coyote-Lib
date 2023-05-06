@@ -505,6 +505,10 @@ class VectorKd internal constructor(private val values: DoubleArray) {
     override fun hashCode(): Int {
         return values.contentHashCode()
     }
+
+    override fun toString(): String {
+        return values.joinToString(", ")
+    }
 }
 
 fun kdVectorOf(vararg values: Double): VectorKd {

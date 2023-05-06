@@ -1,7 +1,9 @@
-fun main(args: Array<String>) {
-    println("Hello World!")
+import empireu.coyote.loadCoyoteProject
+import empireu.coyote.loadTrajectory
+import empireu.coyote.rounded
 
-    // Try adding program arguments via Run/Debug configuration.
-    // Learn more about running applications: https://www.jetbrains.com/help/idea/running-applications.html.
-    println("Program arguments: ${args.joinToString()}")
+fun main(args: Array<String>) {
+    val project = loadCoyoteProject()
+
+    val traje = loadTrajectory(project.MotionProjects["My Project"]!!)
 }
