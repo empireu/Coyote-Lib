@@ -4,73 +4,6 @@ import com.google.gson.Gson
 import java.io.File
 import kotlin.math.absoluteValue
 
-class FnvStream {
-    var result: Long = basisOffset
-        private set
-
-    fun add(b: UByte) {
-        result = result xor b.toLong()
-        result *= prime
-    }
-
-    fun add(long: Long) {
-        add((long shr 0 and 0xFF).toUByte())
-        add((long shr 8 and 0xFF).toUByte())
-        add((long shr 16 and 0xFF).toUByte())
-        add((long shr 24 and 0xFF).toUByte())
-        add((long shr 32 and 0xFF).toUByte())
-        add((long shr 40 and 0xFF).toUByte())
-        add((long shr 48 and 0xFF).toUByte())
-        add((long shr 56 and 0xFF).toUByte())
-    }
-
-    fun add(double: Double) {
-        add(java.lang.Double.doubleToRawLongBits(double))
-    }
-
-    fun addRound(double: Double) {
-        add(double.rounded(10))
-    }
-
-    fun add(vector: Vector2d) {
-        add(vector.x)
-        add(vector.y)
-    }
-
-    fun add(pose: Pose2d) {
-        add(pose.translation)
-        add(pose.rotation.direction)
-    }
-
-    fun add(vector: VectorKd) {
-        for (i in 0 until vector.size) {
-            add(vector[i])
-        }
-    }
-
-    override fun toString(): String {
-        return result.toString()
-    }
-
-    companion object {
-        private val basisOffset: Long = java.lang.Long.parseUnsignedLong("14695981039346656037")
-        private const val prime: Long = 1099511628211
-    }
-}
-
-fun List<CurvePose2d>.hashScanPath(stream: FnvStream) {
-    this.forEach { cp ->
-        stream.add(cp.pose)
-        stream.add(cp.curvature)
-    }
-}
-
-fun List<TrajectoryPoint>.hashScanTrajectory(stream: FnvStream) {
-    this.forEach { tp ->
-        tp.hashScan(stream)
-    }
-}
-
 data class JsonVec2(val X: Float, val Y: Float)
 
 data class JsonTranslationPoint(private val Position: JsonVec2, private val Velocity: JsonVec2, private val Acceleration: JsonVec2) {
@@ -86,6 +19,7 @@ data class JsonRotationPoint(private val Position: JsonVec2, private val Heading
 data class JsonMotionConstraints(
     val LinearVelocity: Double,
     val LinearAcceleration: Double,
+    val LinearDeacceleration: Double,
     val AngularVelocity: Double,
     val AngularAcceleration: Double,
     val CentripetalAcceleration: Double
@@ -215,11 +149,7 @@ data class TrajectoryMarker(
 
 data class EditorTrajectory(
     val trajectory: Trajectory,
-    val markers: List<TrajectoryMarker>,
-    val translationSplineHash: Long,
-    val pathHash: Long,
-    val constraintsHash: Long,
-    val trajectoryHash: Long
+    val markers: List<TrajectoryMarker>
 )
 
 fun loadTrajectory(motionProject: JsonMotionProject): EditorTrajectory {
@@ -230,10 +160,6 @@ fun loadTrajectory(motionProject: JsonMotionProject): EditorTrajectory {
         else null
 
     val translationSpline = motionProject.createTranslationSpline()
-
-    val fnvStream = FnvStream()
-    translationSpline.hashScan(fnvStream)
-    val translationSplineHash = fnvStream.result
 
     translationSpline.getPointsWpi(
         pathPoints,
@@ -285,24 +211,16 @@ fun loadTrajectory(motionProject: JsonMotionProject): EditorTrajectory {
         }
     }
 
-    trajectoryPath.hashScanPath(fnvStream)
-
-    val pathHash = fnvStream.result
     val constraints = BaseTrajectoryConstraints(
         linearVelocity = motionProject.Constraints.LinearVelocity,
         linearAcceleration = motionProject.Constraints.LinearAcceleration,
+        linearDeacceleration = motionProject.Constraints.LinearDeacceleration,
         angularVelocity = motionProject.Constraints.AngularVelocity,
         angularAcceleration = motionProject.Constraints.AngularAcceleration,
         centripetalAcceleration = motionProject.Constraints.CentripetalAcceleration
     )
 
-    constraints.hashScan(fnvStream)
-    val constraintsHash = fnvStream.result
-
     val profile = TrajectoryGenerator.generateProfile(trajectoryPath, constraints)
-
-    profile.hashScanTrajectory(fnvStream)
-    val profileHash = fnvStream.result
 
     // Now, scan the profile and map the trajectory points to markers.
 
@@ -335,11 +253,7 @@ fun loadTrajectory(motionProject: JsonMotionProject): EditorTrajectory {
 
     return EditorTrajectory(
         Trajectory(profile),
-        trajectoryMarkers,
-        translationSplineHash,
-        pathHash,
-        constraintsHash,
-        profileHash
+        trajectoryMarkers
     )
 }
 

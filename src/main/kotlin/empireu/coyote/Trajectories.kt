@@ -9,6 +9,7 @@ import kotlin.math.sqrt
 data class BaseTrajectoryConstraints(
     val linearVelocity: Double,
     val linearAcceleration: Double,
+    val linearDeacceleration: Double,
     val angularVelocity: Double,
     val angularAcceleration: Double,
     val centripetalAcceleration: Double
@@ -16,18 +17,11 @@ data class BaseTrajectoryConstraints(
     init {
         require(linearVelocity > 0.0) { "Linear velocity must be positive." }
         require(linearAcceleration > 0.0) { "Linear acceleration must be positive." }
+        require(linearDeacceleration > 0.0) { "Linear deacceleration must be positive." }
         require(angularVelocity > 0.0) { "Angular velocity must be positive." }
         require(angularAcceleration > 0.0) { "Angular acceleration must be positive." }
         require(centripetalAcceleration > 0.0) { "Centripetal acceleration must be positive." }
     }
-}
-
-fun BaseTrajectoryConstraints.hashScan(stream: FnvStream) {
-    stream.add(linearVelocity)
-    stream.add(linearAcceleration)
-    stream.add(angularVelocity)
-    stream.add(angularAcceleration)
-    stream.add(centripetalAcceleration)
 }
 
 data class TrajectoryPoint(val curvePose: CurvePose2d) {
@@ -53,26 +47,6 @@ data class TrajectoryPoint(val curvePose: CurvePose2d) {
             it.angularAcceleration = angularAcceleration
         }
     }
-
-    fun hashScan(stream: FnvStream) {
-        stream.add(this.curvePose.pose)
-        stream.add(this.curvePose.curvature)
-        stream.addRound(this.rotationCurvature) // ISSUE: rotation log yields a slightly different result to the .NET implementation, making this fail when comparing the exact value.
-        stream.add(this.displacement)
-        stream.add(this.time)
-        stream.add(this.velocity)
-        stream.add(this.acceleration)
-        stream.add(this.angularVelocity)
-        stream.add(this.angularAcceleration)
-    }
-
-    val hash: Long get() {
-        val stream = FnvStream()
-
-        hashScan(stream)
-
-        return stream.result
-    }
 }
 
 object TrajectoryGenerator {
@@ -80,19 +54,7 @@ object TrajectoryGenerator {
         var linearDisplacement: Double,
         var linearVelocity: Double,
         var rotationCurvature: Double
-    ) {
-        fun hashScan(stream: FnvStream) {
-            stream.add(linearDisplacement)
-            stream.addRound(linearVelocity)
-            stream.addRound(rotationCurvature)
-        }
-    }
-
-    private fun List<Intermediary>.hashScan(stream: FnvStream) {
-        this.forEach {
-            it.hashScan(stream)
-        }
-    }
+    )
 
     /**
      * Assigns displacement and rotational curvature to the path points.
@@ -114,30 +76,7 @@ object TrajectoryGenerator {
         }
     }
 
-    private fun computeMovementTime(
-        displacement: Double,
-        initialVelocity: Double,
-        finalVelocity: Double,
-        minAcceleration: Double,
-        maxAcceleration: Double
-    ): Double {
-        require(minAcceleration < 0)
-        require(maxAcceleration > 0)
-
-        if (displacement == 0.0) {
-            if (initialVelocity == finalVelocity) {
-                return 0.0
-            }
-
-            error("Generation failed")
-        }
-
-        val acceleration = (finalVelocity.sqr() - initialVelocity.sqr()) / (displacement * 2.0)
-
-        if (acceleration.absoluteValue > 0.0) {
-            return (finalVelocity - initialVelocity) / acceleration
-        }
-
+    private fun computeMovementTime(displacement: Double, initialVelocity: Double, finalVelocity: Double): Double {
         val vSum = initialVelocity + finalVelocity
 
         if (vSum == 0.0) {
@@ -169,17 +108,12 @@ object TrajectoryGenerator {
         profile: List<Intermediary>,
         constraints: BaseTrajectoryConstraints
     ) {
-        val fnv = FnvStream()
-
         // Angular Velocity:
         profile.forEach {
             it.linearVelocity = it.linearVelocity.minWith(
                 constraints.angularVelocity / it.rotationCurvature.absoluteValue
             )
         }
-
-        profile.hashScan(fnv)
-        val ang = fnv.result
 
         // Centripetal Acceleration:
         profile.forEachIndexed { index, it ->
@@ -188,13 +122,9 @@ object TrajectoryGenerator {
             )
         }
 
-        profile.hashScan(fnv)
-        val cent = fnv.result
-
         val awMax = constraints.angularAcceleration
-        val atMax = constraints.linearAcceleration
 
-        fun bounds(index1: Int, index: Int): Double {
+        fun bounds(index1: Int, index: Int, atMax: Double): Double {
             fun sqr(a: Double) = a * a
 
             val ci = profile[index].rotationCurvature
@@ -343,25 +273,17 @@ object TrajectoryGenerator {
         profile.first().linearVelocity = 0.0
         for (i in 1 until profile.size) {
             profile[i - 1].linearVelocity = profile[i - 1].linearVelocity.minWith(
-                bounds(i - 1, i)
+                bounds(i - 1, i, constraints.linearAcceleration)
             )
         }
-
-        profile.hashScan(fnv)
-        val aa1 = fnv.result
 
         profile.last().linearVelocity = 0.0
         for (i in trajectory.size - 2 downTo 0) {
             profile[i + 1].linearVelocity = profile[i + 1].linearVelocity.minWith(
-                bounds(i + 1, i)
+                bounds(i + 1, i, constraints.linearDeacceleration)
             )
         }
-
-        profile.hashScan(fnv)
-        val aa2 = fnv.result
     }
-
-    private val DEBUG_HASH = true
 
     fun generateProfile(path: List<CurvePose2d>, constraints: BaseTrajectoryConstraints): ArrayList<TrajectoryPoint> {
         require(path.size >= 2)
@@ -372,22 +294,7 @@ object TrajectoryGenerator {
             points.add(TrajectoryPoint(it))
         }
 
-        val fnv = FnvStream()
-        points.hashScanTrajectory(fnv)
-        val initialTrajectoryPathHash = fnv.result
-
         assignPathPoints(points)
-
-        val f = File("c:\\users\\fnafm\\desktop\\kt.txt")
-
-        if(f.exists()) f.delete()
-        f.createNewFile()
-
-        f.writeText(points.map { it.hash }.joinToString("\n"))
-
-        points.hashScanTrajectory(fnv)
-
-        val initialTrajectoryHash = fnv.result
 
         val profile = ArrayList<Intermediary>(path.size)
 
@@ -401,19 +308,12 @@ object TrajectoryGenerator {
             )
         }
 
-        profile.hashScan(fnv)
-        val initialProfileHash = fnv.result
-
         computeUpperVelocities(points, profile, constraints)
 
-        profile.hashScan(fnv)
-        val upperVelocityProfileHash = fnv.result
-
-        fun combinedPass(previousIndex: Int, currentIndex: Int) {
+        fun combinedPass(previousIndex: Int, currentIndex: Int, atMax: Double) {
             val pi1 = profile[previousIndex]
             val pi = profile[currentIndex]
 
-            val atMax = constraints.linearAcceleration
             val awMax = constraints.angularAcceleration
 
             val ci1 = profile[previousIndex].rotationCurvature
@@ -513,20 +413,14 @@ object TrajectoryGenerator {
         // Forward pass:
         profile.first().linearVelocity = 0.0
         for (i in 1 until profile.size) {
-            combinedPass(i - 1, i)
+            combinedPass(i - 1, i, constraints.linearAcceleration)
         }
-
-        profile.hashScan(fnv)
-        val forwardPass = fnv.result
 
         // Backward pass:
         profile.last().linearVelocity = 0.0
         for (i in profile.size - 2 downTo 0) {
-            combinedPass(i + 1, i)
+            combinedPass(i + 1, i, constraints.linearDeacceleration)
         }
-
-        profile.hashScan(fnv)
-        val backwardPass = fnv.result
 
         for (i in 1 until profile.size) {
             val previous = profile[i - 1]
@@ -536,8 +430,6 @@ object TrajectoryGenerator {
                 current.linearDisplacement - previous.linearDisplacement,
                 previous.linearVelocity,
                 current.linearVelocity,
-                -constraints.linearAcceleration,
-                constraints.linearAcceleration
             )
         }
 
@@ -546,10 +438,7 @@ object TrajectoryGenerator {
         return points
     }
 
-    fun generateTrajectory(
-        path: List<CurvePose2d>,
-        constraints: BaseTrajectoryConstraints
-    ): Trajectory {
+    fun generateTrajectory(path: List<CurvePose2d>, constraints: BaseTrajectoryConstraints): Trajectory {
         return Trajectory(generateProfile(path, constraints))
     }
 }
