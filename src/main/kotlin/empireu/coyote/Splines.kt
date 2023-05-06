@@ -281,18 +281,6 @@ class QuinticSpline(val segments: List<QuinticSplineSegment>) :
     }
 }
 
-fun QuinticSpline.hashScan(stream: FnvStream) {
-    this.segments.forEach {
-        stream.add(it.p0)
-        stream.add(it.v0)
-        stream.add(it.a0)
-        stream.add(it.a1)
-        stream.add(it.v1)
-        stream.add(it.p1)
-    }
-}
-
-
 data class QuinticSplineSegmentMapped(val keyRange: Range, val spline: QuinticSplineSegment)
 
 interface MappedPercentage
