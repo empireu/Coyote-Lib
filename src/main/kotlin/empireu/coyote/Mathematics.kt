@@ -1,6 +1,5 @@
 package empireu.coyote
 
-import com.sun.org.apache.xalan.internal.lib.ExsltMath.abs
 import kotlin.math.*
 
 /**
@@ -33,7 +32,7 @@ fun approxEqual(a: Double, b: Double, epsilon: Double = 10e-6): Boolean =
 fun Double.approxEquals(other: Double, epsilon: Double = 10e-6): Boolean =
     approxEqual(this, other, epsilon)
 
-fun Double.sqrt() = kotlin.math.sqrt(this)
+fun Double.sqrt() = sqrt(this)
 
 infix fun Double.approxEquals(other: Double): Boolean = approxEqual(this, other, 10e-6)
 
