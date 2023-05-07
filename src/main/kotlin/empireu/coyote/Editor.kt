@@ -2,7 +2,18 @@ package empireu.coyote
 
 import com.google.gson.Gson
 import java.io.File
+import kotlin.collections.ArrayDeque
+import kotlin.collections.ArrayList
+import kotlin.collections.HashMap
 import kotlin.math.absoluteValue
+
+/**
+ * Coyote editor imports.
+ *
+ * Do not change [Float] to [Double]. These implementations were designed to produce results equal to the editor implementation.
+ * Unfortunately, this was only possible up to a certain point.
+ * Changing these to use [Double] would introduce a lot more variance in the results.
+ * */
 
 data class JsonVec2(val X: Float, val Y: Float)
 
@@ -136,7 +147,8 @@ data class JsonProject(
     val NodeProjects: Map<String, JsonNodeProject>
 )
 
-fun loadCoyoteProject() =
+// todo replace this when preparing this for use:
+fun loadCoyoteProject(): JsonProject =
     Gson().fromJson(
         File(System.getenv("COYOTE_PROJECTS") + "/proj.awoo").readText(),
         JsonProject::class.java
@@ -264,10 +276,10 @@ data class BehaviorCreateContext(
     val savedData: String,
     val children: Map<Int, List<BehaviorNode>>
 ) {
-    val subNodes get() = children.flatMap { it.value }
+    val childNodes get() = children.flatMap { it.value }
 
     fun validateSubNodes(required: Int) : BehaviorCreateContext {
-        require(subNodes.size == required) { "Failed to get required number of sub nodes" }
+        require(childNodes.size == required) { "Failed to get required number of sub nodes" }
 
         return this
     }
@@ -278,59 +290,211 @@ data class BehaviorCreateContext(
         return this
     }
 
-    fun one() = this.validateSubNodes(1).subNodes.first()
+    fun one() = this.validateSubNodes(1).childNodes.first()
 }
 
-fun interface IBehaviorFactory {
-    fun create(context: BehaviorCreateContext): BehaviorNode
+/**
+ * Behavior Node Factory. It is used to construct the initial [BehaviorNode]. Further initialization is done using a multi-pass process.
+ * @see IBehaviorInitPass
+ * */
+fun interface IBehaviorFactory<T : BehaviorNode> {
+    fun create(context: BehaviorCreateContext): T
 }
+
+/**
+ * Behavior Node Initialization Pass. All passes are grouped by index (see [BehaviorMapBuilder.add]) and executed when the behavior is being loaded.
+ * */
+fun interface IBehaviorInitPass<T : BehaviorNode> {
+    fun pass(passContext: BehaviorPassContext<T>)
+}
+
+data class BehaviorCreateInfo(
+    val factory: IBehaviorFactory<BehaviorNode>,
+    val passes: List<IBehaviorInitPass<BehaviorNode>>
+)
+
+/**
+ * Encapsulates information about a specific behavior tree, that belongs to a project.
+ * @param root The root node of the tree.
+ * @param nodes The nodes in the tree, including [root].
+ * */
+data class BehaviorTreeInfo(val root: BehaviorNode, val nodes: List<BehaviorNode>)
+
+/**
+ * Encapsulates information about all behaviors in a project.
+ * @param behaviors The behaviors in the project.
+ * */
+data class BehaviorProjectInfo(val behaviors: List<BehaviorTreeInfo>)
+
+/**
+ * Encapsulates information about a behavior node loading pass.
+ * @param node The node being initialized.
+ * @param root The root node of [node]'s tree.
+ * @param tree The nodes in [node]'s tree.
+ * @param project Information about the project [node] belongs to.
+ * @param createContext The serialized data of this node.
+ * */
+data class BehaviorPassContext<T : BehaviorNode>(
+    val node: T,
+    val root: BehaviorNode,
+    val tree: List<BehaviorNode>,
+    val project: BehaviorProjectInfo,
+    val createContext: BehaviorCreateContext
+)
 
 class BehaviorMapBuilder {
-    private val factories = HashMap<String, IBehaviorFactory>()
+    val behaviors = HashMap<String, BehaviorCreateInfo>()
 
-    fun add(name: String, factory: IBehaviorFactory): BehaviorMapBuilder {
-        if(factories.containsKey(name)) {
+    /**
+     * Adds a behavior to this builder.
+     * @param name The unique name of this node.
+     * @param factory A factory, that will be used to create new instance of the node.
+     * @param passes Supplementary initialization pass functions. The passes from all nodes are grouped based on index (the position of the vararg) and then executed, in order to finish initializing the node.
+     * */
+    inline fun<reified T : BehaviorNode> add(name: String, factory: IBehaviorFactory<T>, vararg passes: IBehaviorInitPass<T>): BehaviorMapBuilder {
+        if(behaviors.containsKey(name)) {
             error("Duplicate node $name")
         }
 
-        factories[name] = factory
+        behaviors[name] = BehaviorCreateInfo(
+            { factory.create(it) },
+            passes
+                .asList()
+                .map { callback ->
+                    IBehaviorInitPass { ctx ->
+                        callback.pass(
+                            BehaviorPassContext(
+                                ctx.node as T,
+                                ctx.root,
+                                ctx.tree,
+                                ctx.project,
+                                ctx.createContext
+                            )
+                        )
+                    }
+                }
+        )
 
         return this
     }
 
-    fun build() = BehaviorMap(factories.toMap())
+    fun build() = BehaviorMap(behaviors.toMap())
 }
 
-data class BehaviorMap(val behaviors: Map<String, IBehaviorFactory>)
+data class BehaviorMap(val behaviors: Map<String, BehaviorCreateInfo>)
 
-fun loadBehavior(root: JsonNode, behaviorMap: BehaviorMap) : BehaviorNode {
-    val factory = behaviorMap.behaviors[root.BehaviorId]
+private data class StagedNode(val node: BehaviorNode, val context: BehaviorCreateContext)
+
+/**
+ * Constructs the Behavior Tree, starting at [root].
+ * @param behaviorMap The factory specification of this Behavior Tree. Only the factory will be invoked to create the node; the passes will not be executed here.
+ * @param nodeTracking A mapping of [BehaviorCreateInfo] to a list of the nodes that were created for that specific [BehaviorCreateInfo].
+ * */
+private fun createNode(root: JsonNode, behaviorMap: BehaviorMap, nodeTracking: HashMap<BehaviorCreateInfo, ArrayList<StagedNode>>) : BehaviorNode {
+    val createInfo = behaviorMap.behaviors[root.BehaviorId]
         ?: error("Behavior with ID ${root.BehaviorId} is not registered")
 
-    return factory.create(
-        BehaviorCreateContext(
-            root.Name,
-            root.ExecuteOnce,
-            root.SavedData,
-            root.Children.let {
-                val map = HashMap<Int, ArrayList<BehaviorNode>>()
+    val context = BehaviorCreateContext(
+        root.Name,
+        root.ExecuteOnce,
+        root.SavedData,
+        root.Children.let {
+            val map = HashMap<Int, ArrayList<BehaviorNode>>()
 
-                it.forEach { child ->
-                    val node = loadBehavior(child.Node, behaviorMap)
+            it.forEach { child ->
+                val node = createNode(child.Node, behaviorMap, nodeTracking)
 
-                    if(map.containsKey(child.TerminalId)) {
-                        map[child.TerminalId]!!.add(node)
-                    }
-                    else{
-                        map[child.TerminalId] = arrayListOf(node)
-                    }
+                if(map.containsKey(child.TerminalId)) {
+                    map[child.TerminalId]!!.add(node)
                 }
-
-                return@let map.toMap()
+                else{
+                    map[child.TerminalId] = arrayListOf(node)
+                }
             }
-        )
+
+            return@let map.toMap()
+        }
     )
+
+    return createInfo.factory.create(context).also { node ->
+        nodeTracking.getOrPut(createInfo) { ArrayList() }.add(StagedNode(node, context))
+    }
 }
 
+fun loadNodeProject(rootNodes: List<JsonNode>, behaviorMap: BehaviorMap) : BehaviorProjectInfo {
+    class TreeInfo(
+        val tracking: HashMap<BehaviorCreateInfo, ArrayList<StagedNode>>,
+        val root: BehaviorNode,
+        val nodes: ArrayList<BehaviorNode>
+    )
+
+    val projectTrees = rootNodes.map { jsonRoot ->
+        val tracking = HashMap<BehaviorCreateInfo, ArrayList<StagedNode>>()
+        val root = createNode(jsonRoot, behaviorMap, tracking)
+        val tree = ArrayList<BehaviorNode>()
+
+        fun treeScan(node: BehaviorNode) {
+            tree.add(node)
+
+            if(node is IParentBehavior) {
+                node.children.forEach { treeScan(it) }
+            }
+        }
+
+        treeScan(root)
+
+        TreeInfo(
+            tracking,
+            root,
+            tree
+        )
+    }
+
+    val projectInfo = BehaviorProjectInfo(
+        projectTrees.map { behavior ->
+            BehaviorTreeInfo(behavior.root, behavior.nodes)
+        }
+    )
+
+    projectTrees.forEach { treeInfo ->
+        class PassInfo(val createInfo: BehaviorCreateInfo, val passCallbacks: ArrayList<IBehaviorInitPass<BehaviorNode>>)
+
+        val passes = HashMap<Int, HashMap<BehaviorCreateInfo, PassInfo>>()
+
+        behaviorMap.behaviors.values.forEach { createInfo ->
+            createInfo.passes.forEachIndexed { passIndex, pass ->
+                passes
+                    .getOrPut(passIndex) { HashMap() }
+                    .getOrPut(createInfo) { PassInfo(createInfo, ArrayList()) }
+                    .passCallbacks
+                    .add(pass)
+            }
+        }
+
+        passes.keys.sorted().forEach { idx ->
+            passes[idx]!!.forEach { (_, passInfo) ->
+                val nodes = treeInfo.tracking[passInfo.createInfo]
+
+                if(nodes != null) {
+                    passInfo.passCallbacks.forEach { callback ->
+                        nodes.forEach { stagedNode ->
+                            callback.pass(
+                                BehaviorPassContext(
+                                    stagedNode.node,
+                                    treeInfo.root,
+                                    treeInfo.nodes,
+                                    projectInfo,
+                                    stagedNode.context
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return projectInfo
+}
 
 

@@ -140,6 +140,14 @@ class BehaviorContext {
 }
 
 /**
+ * Implemented by nodes that have children nodes.
+ * Used to scan the tree
+ * */
+interface IParentBehavior {
+    val children: List<BehaviorNode>
+}
+
+/**
  * @param name Display name of this node.
  * @param runOnce
  * If true, the [update] logic will only be executed until a non-running result is obtained. If [BehaviorStatus.Success] or [BehaviorStatus.Failure] is returned, this state will be stored in [BehaviorContext.status] and will be returned every time [getStatus] is called.
@@ -170,12 +178,15 @@ abstract class BehaviorNode(val name: String, val runOnce: Boolean) {
  * Behavior node with an arbitrary number of [children] nodes.
  * By convention, [children] can also be empty.
  * */
-abstract class BehaviorProxyNode(name: String, runOnce: Boolean, val children: List<BehaviorNode>) : BehaviorNode(name, runOnce)
+abstract class BehaviorProxyNode(name: String, runOnce: Boolean, override val children: List<BehaviorNode>) : BehaviorNode(name, runOnce), IParentBehavior
 
 /**
  * Behavior node with a single child node.
  * */
-abstract class BehaviorDecoratorNode(name: String, runOnce: Boolean, val child: BehaviorNode) : BehaviorNode(name, runOnce) {
+abstract class BehaviorDecoratorNode(name: String, runOnce: Boolean, val child: BehaviorNode) : BehaviorNode(name, runOnce), IParentBehavior {
+    override val children: List<BehaviorNode>
+        get() = listOf(child)
+
     final override fun update(context: BehaviorContext): BehaviorStatus {
         return transform(
             child.getStatus(context)
@@ -400,7 +411,7 @@ interface ITrajectoryFollower {
  *
  * The "fundamental node" is the *Proxy*-like behavior of this node. It is either a [BehaviorSequenceNode] or a [BehaviorParallelNode].
  * */
-class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProject, private val follower: ITrajectoryFollower) : BehaviorNode(createContext.name, createContext.runOnce) {
+class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProject, private val follower: ITrajectoryFollower) : BehaviorNode(createContext.name, createContext.runOnce), IParentBehavior {
     private data class JsonBinding(
         val TerminalId: Int,
         val Marker: String
@@ -457,6 +468,9 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
      * It is also not an execution variable. It is akin to a proxy node's child node.
      * */
     private val fundamentalNode: BehaviorNode
+
+    override val children: List<BehaviorNode>
+        get() = listOf(fundamentalNode)
 
     init {
         val state = Gson().fromJson(createContext.savedData, JsonState::class.java)
