@@ -1,6 +1,5 @@
 package empireu.coyote
 
-import java.io.File
 import kotlin.math.absoluteValue
 import kotlin.math.max
 import kotlin.math.min
@@ -12,7 +11,7 @@ data class BaseTrajectoryConstraints(
     val linearDeacceleration: Double,
     val angularVelocity: Double,
     val angularAcceleration: Double,
-    val centripetalAcceleration: Double
+    val centripetalAcceleration: Double,
 ) {
     init {
         require(linearVelocity > 0.0) { "Linear velocity must be positive." }
@@ -53,7 +52,7 @@ object TrajectoryGenerator {
     private data class Intermediary(
         var linearDisplacement: Double,
         var linearVelocity: Double,
-        var rotationCurvature: Double
+        var rotationCurvature: Double,
     )
 
     /**
@@ -106,7 +105,7 @@ object TrajectoryGenerator {
     private fun computeUpperVelocities(
         trajectory: List<TrajectoryPoint>,
         profile: List<Intermediary>,
-        constraints: BaseTrajectoryConstraints
+        constraints: BaseTrajectoryConstraints,
     ) {
         // Angular Velocity:
         profile.forEach {
@@ -376,32 +375,7 @@ object TrajectoryGenerator {
                 }
             }
 
-            var velocity = 0.0
-
-            vtAwRanges.forEachIndexed { index, vtAw ->
-                val intersect = intersect(vtAw, vtAt)
-
-                if (!intersect.isValid) {
-                    if (index == vtAwRanges.size - 1) {
-                        val closest = vtAwRanges
-                            .flatMap { listOf(it.min, it.max) }
-                            .filter { it >= -10e-4 }
-                            .flatMap { av ->
-                                listOf(
-                                    Pair(av, vtAt.min),
-                                    Pair(av, vtAt.max)
-                                )
-                            }
-                            .minBy { kotlin.math.abs(it.first - it.second) }
-
-                        velocity = max((closest.first + closest.second) / 2.0, 0.0)
-                    }
-
-                    return@forEachIndexed
-                }
-
-                velocity = max(velocity, intersect.max)
-            }
+            val velocity = solutionScan(vtAt, vtAwRanges)
 
             if (!velocity.isFinite()) {
                 error("Failed to find velocity")
@@ -440,6 +414,40 @@ object TrajectoryGenerator {
 
     fun generateTrajectory(path: List<CurvePose2d>, constraints: BaseTrajectoryConstraints): Trajectory {
         return Trajectory(generateProfile(path, constraints))
+    }
+
+    fun solutionScan(vtAt: Range, vtAwRanges: List<Range>): Double {
+        class ScanResult(val solution: Double, val error: Double) {
+            init { require(error >= 0.0) }
+        }
+
+        fun intersectMidpoint(a: Range, b: Range): ScanResult {
+            assert(a.isValid && b.isValid)
+
+            if (a.max == b.min) {
+                return ScanResult(a.max, 0.0)
+            }
+            if (b.max == a.min) {
+                return ScanResult(b.max, 0.0)
+            }
+            if (a.max < b.min) {
+                return ScanResult((a.max + b.min) / 2.0, b.min - a.max)
+            }
+
+            assert(b.max < a.min)
+
+            return ScanResult((b.max + a.min) / 2.0, a.min - b.max)
+        }
+
+        return vtAwRanges.map { vtAw ->
+            val intersection = intersect(vtAt, vtAw)
+
+            if(intersection.isValid) {
+                return@map ScanResult(intersection.max, 0.0)
+            }
+
+            return@map intersectMidpoint(vtAt, vtAw)
+        }.minBy { it.error }.solution
     }
 }
 
