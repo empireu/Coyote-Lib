@@ -3,6 +3,8 @@ import empireu.coyote.*
 fun main(args: Array<String>) {
     val project = loadCoyoteProject()
 
+    val t = loadTrajectory(project.MotionProjects["My Project"]!!)
+
     val nodeProject = loadNodeProject(project.NodeProjects["My Project"]!!.RootNodes, BehaviorMapBuilder().also { b ->
         b.add("Sequence", { ctx -> BehaviorSequenceNode(ctx.name, ctx.runOnce, ctx.childNodes) })
         b.add("Selector", { ctx -> BehaviorSelectorNode(ctx.name, ctx.runOnce, ctx.childNodes) })
