@@ -2,6 +2,7 @@ package empireu.coyote
 
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
+import kotlin.reflect.KClass
 
 /**
  * [Behavior Tree Implementation](https://en.wikipedia.org/wiki/Behavior_tree_(artificial_intelligence,_robotics_and_control))
@@ -374,6 +375,16 @@ class BehaviorCallNode(name: String, runOnce: Boolean) : BehaviorNode(name, runO
         val parent: BehaviorContext,
         val node: BehaviorCallNode
     )
+}
+
+abstract class BehaviorCompositeNode(name: String, runOnce: Boolean, val storedData: String) : BehaviorNode(name, runOnce) {
+    protected fun <TStorage : Any> loadStorage(storageClass: KClass<TStorage>): TStorage {
+        return Gson().fromJson(storedData, JsonCompositeState::class.java).load(storageClass)
+    }
+
+    protected fun <TStorage: Any> loadStorageJava(storageClass: Class<TStorage>) : TStorage {
+        return loadStorage(storageClass.kotlin)
+    }
 }
 
 /**

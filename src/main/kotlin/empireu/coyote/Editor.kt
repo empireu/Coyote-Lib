@@ -2,10 +2,11 @@ package empireu.coyote
 
 import com.google.gson.Gson
 import java.io.File
-import kotlin.collections.ArrayDeque
-import kotlin.collections.ArrayList
-import kotlin.collections.HashMap
 import kotlin.math.absoluteValue
+import kotlin.reflect.KClass
+import kotlin.reflect.full.isSubtypeOf
+import kotlin.reflect.full.primaryConstructor
+import kotlin.reflect.full.starProjectedType
 
 /**
  * Coyote editor imports.
@@ -495,6 +496,73 @@ fun loadNodeProject(rootNodes: List<JsonNode>, behaviorMap: BehaviorMap) : Behav
     }
 
     return projectInfo
+}
+
+/**
+ * This implementation is small and simple. I did not architect *a system* here.
+ * It would have been a lot more difficult to digest by less experienced users that may want to modify it.
+ * Also, it is not necessary since we don't plan to extend this.
+ * */
+
+interface INamedElement {
+    val Name: String
+    val Value: Any
+}
+data class JsonCompositeFlag(override val Name: String, val State: Boolean) : INamedElement{
+    override val Value: Any
+        get() = State
+}
+data class JsonCompositeEnum(override val Name: String, val Selected: String) : INamedElement{
+    override val Value: Any
+        get() = Selected
+}
+data class JsonCompositeRealValue(override val Name: String, override val Value: Double) : INamedElement
+data class JsonCompositeIntegerValue(override val Name: String, override val Value: Int) : INamedElement
+data class JsonCompositeTextValue(override val Name: String, override val Value: String) : INamedElement
+
+data class JsonCompositeState(
+    val Flags: List<JsonCompositeFlag>,
+    val Enums: List<JsonCompositeEnum>,
+    val RealSliders: List<JsonCompositeRealValue>,
+    val IntegerSliders: List<JsonCompositeIntegerValue>,
+    val TextInputFields: List<JsonCompositeTextValue>,
+    val RealInputFields: List<JsonCompositeRealValue>,
+    val IntegerInputFields: List<JsonCompositeIntegerValue>
+) {
+    private fun txMap() : Map<String, Any> {
+        val result = HashMap<String, Any>()
+
+        fun add(element: INamedElement) {
+            if(result.put(element.Name, element.Value) != null){
+                error("Duplicate element ${element.Name}")
+            }
+        }
+
+        (Flags + Enums + RealSliders + IntegerSliders + TextInputFields + RealInputFields + IntegerInputFields).forEach(::add)
+
+        return result
+    }
+
+    fun<T : Any> load(k: KClass<T>): T {
+        val map = txMap()
+
+        return (k.primaryConstructor ?: error("Failed to get constructor")).let { ctor ->
+            ctor.callBy(ctor
+                .parameters
+                .associateWith { param ->
+                    val serializedValue = map[param.name] ?: error("Failed to map ${param.name}")
+
+                    if(param.type.isSubtypeOf(Enum::class.starProjectedType)) {
+                        (param.type.classifier as KClass<*>).java.enumConstants.firstOrNull {
+                            (it as Enum<*>).name == (serializedValue as String)
+                        } ?: error("Failed to parse option $serializedValue in ${param.name}")
+                    } else {
+                        serializedValue
+                    }
+                }
+            )
+        }
+    }
 }
 
 
