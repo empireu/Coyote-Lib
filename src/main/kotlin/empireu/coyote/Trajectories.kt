@@ -147,7 +147,7 @@ object TrajectoryGenerator {
                                 ((atMax * (ci + ci1) + 2.0 * awMax) * (ci - ci1))
                     )
 
-                    thresh.throwIfNan()
+                    thresh.requireNotNaN()
                 } else if (ci < ci1) {
                     val thresh1 = sqrt(8.0 * ci * awMax * ds / sqr(ci1 + ci))
                     val tmp1 = sqrt(4.0 * ci * ds * (ci * atMax + awMax) / sqr(ci1 - ci))
@@ -169,7 +169,7 @@ object TrajectoryGenerator {
 
                     thresh = max(max(thresh1, threshTmp1), max(threshTmp2, threshTmp3))
 
-                    thresh.throwIfNan()
+                    thresh.requireNotNaN()
                 } else if (ci == ci1) {
                     thresh = Double.POSITIVE_INFINITY
                 } else {
@@ -199,12 +199,12 @@ object TrajectoryGenerator {
                     }
 
                     thresh = max(max(thresh1, threshTmp1), max(threshTmp2, threshTmp3))
-                    thresh.throwIfNan()
+                    thresh.requireNotNaN()
                 } else if (ci < ci1) {
                     thresh = sqrt(
                         -2.0 * ds * sqr(awMax - ci * atMax) / ((ci1 - ci) * ((ci + ci1) * atMax - 2.0 * awMax))
                     )
-                    thresh.throwIfNan()
+                    thresh.requireNotNaN()
                 } else if (ci == ci1) {
                     thresh = Double.POSITIVE_INFINITY
                 } else {
@@ -223,7 +223,7 @@ object TrajectoryGenerator {
                 )
                 threshTmp = max(threshTmp, sqrt(2 * ds * atMax))
                 thresh = min(threshTmp, vtWoStarPos)
-                thresh.throwIfNan()
+                thresh.requireNotNaN()
             } else if (ci > 0.0 && ci1 < 0.0) {
                 val v1StarPos = sqrt(-(2.0 * ds * awMax / ci1))
                 var precond = Double.POSITIVE_INFINITY
@@ -239,7 +239,7 @@ object TrajectoryGenerator {
                 )
                 threshTmp = max(threshTmp, sqrt(2.0 * ds * atMax))
                 thresh = min(threshTmp, v1StarPos)
-                thresh.throwIfNan()
+                thresh.requireNotNaN()
             } else if (ci == 0.0 && ci1 == 0.0) {
                 thresh = Double.POSITIVE_INFINITY
             } else if (ci == 0.0) {
@@ -249,14 +249,14 @@ object TrajectoryGenerator {
                         sqrt(2.0 * ds * atMax),
                         sqrt(-2.0 * ds * sqr(awMax) / (ci1 * (ci1 * atMax - 2.0 * awMax)))
                     )
-                    thresh = minNaN(vtWoHatPos, threshTmp).throwIfNan()
+                    thresh = minNaN(vtWoHatPos, threshTmp).requireNotNaN()
                 } else if (ci1 < 0.0) {
                     val v1HatPos = sqrt(-(2.0 * ds * awMax / ci1))
                     val threshTmp = maxNaN(
                         sqrt(2.0 * ds * atMax),
                         sqrt(-2.0 * ds * sqr(awMax) / (ci1 * (ci1 * atMax + 2.0 * awMax)))
                     )
-                    thresh = minNaN(v1HatPos, threshTmp).throwIfNan()
+                    thresh = minNaN(v1HatPos, threshTmp).requireNotNaN()
                 } else {
                     unexpectedSet()
                 }
@@ -264,7 +264,7 @@ object TrajectoryGenerator {
                 unexpectedSet()
             }
 
-            return thresh.throwIfNan()
+            return thresh.requireNotNaN()
         }
 
         // Angular acceleration:

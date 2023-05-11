@@ -347,7 +347,7 @@ class BehaviorCallNode(name: String, runOnce: Boolean) : BehaviorNode(name, runO
     private var target: BehaviorNode? = null
 
     fun bind(target: BehaviorNode) {
-        require(this.target == null) { "Cannot re-bind external call." }
+        require(this.target == null) { "Cannot re-bind call node." }
         this.target = target
     }
 
@@ -355,15 +355,8 @@ class BehaviorCallNode(name: String, runOnce: Boolean) : BehaviorNode(name, runO
         val target = this.target
             ?: error("External call $name not bound")
 
-        val callContext = context
-            .getOrStore<CallContextKey, BehaviorContext>(
-                CallContextKey(context, this)) {
-                // Since all node states are stored in a context, we just create a separate context for the target node.
-                // The context tree will basically separate the execution and state for every external call.
-                // This implementation is more elegant, then splicing the trees (re-creating the subtree for every external call, and storing state in the node).
-                // It also makes implementing a repeater or loop-like node easier, down the line, since we just have to create a context for every iteration.
-                BehaviorContext()
-            }
+        // Refer to the top of this file for an explanation.
+        val callContext = context.getOrStore(CallContextKey(context, this)) { BehaviorContext() }
 
         return target.getStatus(callContext)
     }
@@ -371,13 +364,31 @@ class BehaviorCallNode(name: String, runOnce: Boolean) : BehaviorNode(name, runO
     /**
      * [BehaviorContext.storage] key for the separate [BehaviorContext] passed down to [target].
      * */
-    private data class CallContextKey(
-        val parent: BehaviorContext,
-        val node: BehaviorCallNode
-    )
+    private data class CallContextKey(val parent: BehaviorContext, val node: BehaviorCallNode) {
+        override fun equals(other: Any?): Boolean {
+            if(other !is CallContextKey) {
+                return false
+            }
+
+            return parent == other.parent && node == other.node
+        }
+
+        override fun hashCode(): Int {
+            var result = parent.hashCode()
+            result = 31 * result + node.hashCode()
+            return result
+        }
+    }
 }
 
-abstract class BehaviorCompositeNode(name: String, runOnce: Boolean, val storedData: String) : BehaviorNode(name, runOnce) {
+/**
+ * Custom leaf nodes implemented using the editor's YAML definition system.
+ * */
+abstract class BehaviorCompositeNode(name: String, runOnce: Boolean, private val storedData: String) : BehaviorNode(name, runOnce) {
+    /**
+     * Loads the data stored in this node into [TStorage].
+     * All primary constructor parameters of [TStorage] must map to a stored value.
+     * */
     protected fun <TStorage : Any> loadStorage(storageClass: KClass<TStorage>): TStorage {
         return Gson().fromJson(storedData, JsonCompositeState::class.java).load(storageClass)
     }
@@ -388,9 +399,9 @@ abstract class BehaviorCompositeNode(name: String, runOnce: Boolean, val storedD
 }
 
 /**
- * Trajectory follower interface for the [BehaviorMotionNode]
+ * Drive interface for the [BehaviorMotionNode].
  * */
-interface ITrajectoryFollower {
+interface IDriveController {
     /**
      * Checks if [trajectory] is the trajectory currently being followed.
      * If no trajectory is being followed, this must return `false`.
@@ -399,7 +410,8 @@ interface ITrajectoryFollower {
 
     /**
      * Gets the displacement along the current trajectory.
-     * If no trajectory is being followed, this must produce an error.
+     * If no trajectory is being followed, this is expected to produce an error.
+     * The intended logic will not call this unless a trajectory is actually being followed.
      * */
     val displacement: Double
 
@@ -411,7 +423,8 @@ interface ITrajectoryFollower {
 
     /**
      * True if the follower has reached the destination.
-     * If no trajectory is being followed, this must produce an error.
+     * If no trajectory is being followed, this is expected to produce an error.
+     * The intended logic will not call this unless a trajectory is actually being followed.
      * */
     val isAtDestination: Boolean
 }
@@ -422,7 +435,7 @@ interface ITrajectoryFollower {
  *
  * The "fundamental node" is the *Proxy*-like behavior of this node. It is either a [BehaviorSequenceNode] or a [BehaviorParallelNode].
  * */
-class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProject, private val follower: ITrajectoryFollower) : BehaviorNode(createContext.name, createContext.runOnce), IParentBehavior {
+class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProject, private val follower: IDriveController) : BehaviorNode(createContext.name, createContext.runOnce), IParentBehavior {
     private data class JsonBinding(
         val TerminalId: Int,
         val Marker: String
@@ -447,11 +460,11 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
      * *Ghost* child node for [fundamentalNode].
      * - If the marker is not hit yet, [BehaviorStatus.Running] is returned.
      * - If the marker was hit, the status of [boundChild] is returned.
-     *
-     * Every child in the listener is wrapped with such a node.
      * */
     private class MarkerNode(name: String, runOnce: Boolean, val listener: MarkerListener, val boundChild: BehaviorNode, val key: StorageKey) : BehaviorNode(name, runOnce) {
         override fun update(context: BehaviorContext): BehaviorStatus {
+            // P.S. it is guaranteed the stored data exists,
+            // since BehaviorMotionNode is updated first (and the intended logic will create and update this stored value)
             val storedData = context.getStored<StorageKey, StorageValue>(key)
 
             if(!storedData.fired.contains(listener)) {
@@ -465,9 +478,8 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
         }
     }
 
-    // This is not an execution variable, because the list doesn't change during execution,
-    // and MarkerListener is immutable:
-    private val listeners = ArrayList<MarkerListener>()
+    // This is not an execution variable, because the list and content (MarkerListener is immutable) do not change during execution.
+    private val listeners: List<MarkerListener>
 
     // This is not an execution variable, because it is immutable:
     private val trajectory: Trajectory
@@ -493,6 +505,8 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
         trajectory = editorTrajectory.trajectory
 
         // Map the loaded children in "createContext" to the children we have in "state":
+
+        val listeners = ArrayList<MarkerListener>()
         state.Bindings.forEach { jsonBinding ->
             val boundChildren = createContext.children[jsonBinding.TerminalId]
                 ?: error("Failed to bind stored children ${jsonBinding.TerminalId}, in marker ${jsonBinding.Marker} to actual children")
@@ -503,13 +517,12 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
             val marker = editorTrajectory.markers.firstOrNull { it.name == jsonBinding.Marker }
                 ?: error("Failed to get trajectory marker ${jsonBinding.Marker}")
 
-            listeners.add(
-                MarkerListener(marker, boundChildren)
-            )
+            listeners.add(MarkerListener(marker, boundChildren))
         }
 
-        // Now, to create the "fundamental node", we need to create the wrapper (ghost) nodes for every child in the listeners:
+        this.listeners = listeners
 
+        // Now, to create the "fundamental node", we need to create the wrapper (ghost) nodes for every listener child:
         val ghostNodes = listeners.map { listener ->
             listener.nodes.map { node ->
                 MarkerNode(
@@ -522,7 +535,7 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
             }
         }.flatten()
 
-        // Then, select the fundamental implementation:
+        // Then, select the implementation:
         fundamentalNode = when(state.Type) {
             JsonNodeType.Sequence ->
                 BehaviorSequenceNode(
@@ -532,7 +545,7 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
                 )
             JsonNodeType.Parallel ->
                 BehaviorParallelNode(
-                    name = "${createContext.name} ${state.Type} Parallel",
+                    name = "${createContext.name} Parallel",
                     runOnce = true,
                     children = ghostNodes
                 )
@@ -549,14 +562,14 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
 
         // We will get the listeners that have been fired.
         // A listener has fired if the trajectory's current displacement is larger or equal to the marker's.
-        // This is a bit different to what the simulator does. The simulator compares the time, which may not work well in the real world.
-        // Comparing displacements will take into account any issues that may have happened along the way (e.g. the robot not following the trajectory closely)
         val actualDisplacement = follower.displacement
 
         // We store the fired state in the context, for the ghost nodes to access:
         context.getOrStore(StorageKey(this)) { StorageValue(HashSet()) }
             .also {
-                it.fired.clear() // This needs to be researched more. If we find that "displacement" should be strictly monotonous increasing, then clearing does not make sense.
+                it.fired.clear() // This needs to be researched more. If we find that "displacement" should be strictly monotonous increasing,
+                // then clearing does not make sense (if displacement goes backwards for some reason, we will get intermittent child updates)
+
                 it.fired.addAll(
                     listeners.filter { l ->
                         actualDisplacement >= l.marker.point.displacement
@@ -564,16 +577,13 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
                 )
             }
 
-        // First, we select a state based on the follower's state.
-        // This is pretty simple, we are Running if we haven't reached the destination, and Success if we have:
+        // First, we select a behavior status based on the follower's state.
+        // This is pretty simple, it is Running if we haven't reached the destination, and Success if we have:
         val followState =
             if(follower.isAtDestination) BehaviorStatus.Success
             else BehaviorStatus.Running
 
-        // Now, we get the state of the fundamental node.
-        // This will be the execution state of the markers.
-        // Refer to the document at the top of the file. It is stated that proxies without any child nodes must produce Success.
-        // We are not enforcing that here, though.
+        // Now, get the status of the fundamental node (and consequently of the child nodes):
         val markerState = fundamentalNode.getStatus(context)
 
         // Then, we compose the states using AND.
@@ -587,7 +597,19 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
     /**
      * Storage key for state storage. Refer to the document at the top of this file to see why this is required.
      * */
-    private data class StorageKey(val motionNode: BehaviorMotionNode)
+    private data class StorageKey(val motionNode: BehaviorMotionNode) {
+        override fun equals(other: Any?): Boolean {
+            if(other !is StorageKey) {
+                return false
+            }
+
+            return motionNode == other.motionNode
+        }
+
+        override fun hashCode(): Int {
+            return motionNode.hashCode()
+        }
+    }
 
     /**
      * The execution state of this node, stored in the [BehaviorContext].

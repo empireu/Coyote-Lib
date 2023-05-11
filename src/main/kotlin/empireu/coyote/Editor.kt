@@ -166,7 +166,7 @@ data class EditorTrajectory(
 )
 
 fun loadTrajectory(motionProject: JsonMotionProject): EditorTrajectory {
-    val pathPoints = ArrayList<CurvePoseParam<Percentage>>()
+    val pathPoints = ArrayList<CurvePoseParametric<Percentage>>()
 
     val rotationSpline =
         if(motionProject.hasRotationSpline) motionProject.createRotationSpline()
@@ -269,7 +269,6 @@ fun loadTrajectory(motionProject: JsonMotionProject): EditorTrajectory {
         trajectoryMarkers
     )
 }
-
 
 data class BehaviorCreateContext(
     val name: String,
@@ -501,13 +500,14 @@ fun loadNodeProject(rootNodes: List<JsonNode>, behaviorMap: BehaviorMap) : Behav
 /**
  * This implementation is small and simple. I did not architect *a system* here.
  * It would have been a lot more difficult to digest by less experienced users that may want to modify it.
- * Also, it is not necessary since we don't plan to extend this.
+ * Also, it is not really an issue, because we do not plan to extend this.
  * */
 
 interface INamedElement {
     val Name: String
     val Value: Any
 }
+
 data class JsonCompositeFlag(override val Name: String, val State: Boolean) : INamedElement{
     override val Value: Any
         get() = State
@@ -529,7 +529,11 @@ data class JsonCompositeState(
     val RealInputFields: List<JsonCompositeRealValue>,
     val IntegerInputFields: List<JsonCompositeIntegerValue>
 ) {
-    private fun txMap() : Map<String, Any> {
+    /**
+     * Creates a map of all values stored in this Composite State.
+     * An error will be produced if duplicate keys exist.
+     * */
+    private fun createStorageMap() : Map<String, Any> {
         val result = HashMap<String, Any>()
 
         fun add(element: INamedElement) {
@@ -543,8 +547,13 @@ data class JsonCompositeState(
         return result
     }
 
+    /**
+     * Loads the values stored in this [JsonCompositeState] into a new instance of [T].
+     *
+     * [T] must have a primary constructor. All constructor arguments must map to values stored in this node. If this constraint is not satisfied, an exception will be produced. Extra data, that does not map to any constructor arguments will be ignored.
+     * */
     fun<T : Any> load(k: KClass<T>): T {
-        val map = txMap()
+        val map = createStorageMap()
 
         return (k.primaryConstructor ?: error("Failed to get constructor")).let { ctor ->
             ctor.callBy(ctor
@@ -553,10 +562,17 @@ data class JsonCompositeState(
                     val serializedValue = map[param.name] ?: error("Failed to map ${param.name}")
 
                     if(param.type.isSubtypeOf(Enum::class.starProjectedType)) {
-                        (param.type.classifier as KClass<*>).java.enumConstants.firstOrNull {
-                            (it as Enum<*>).name == (serializedValue as String)
-                        } ?: error("Failed to parse option $serializedValue in ${param.name}")
+                        // Enums need special care. The stored data is just the name of the target option. We need to find that option.
+
+                        (param.type.classifier as KClass<*>)
+                            .java
+                            .enumConstants
+                            .firstOrNull { (it as Enum<*>).name == (serializedValue as String) }
+                                ?: error("Failed to parse option $serializedValue in ${param.name}")
                     } else {
+                        // It is fine to just load the object into the field.
+                        // This is partly why we created separate storage classes, so the deserializer dispatches the correct type, and we don't have to convert it ourselves.
+                        // Still, it is far from an elegant solution, but it is simple (and this whole project is in need of simple).
                         serializedValue
                     }
                 }

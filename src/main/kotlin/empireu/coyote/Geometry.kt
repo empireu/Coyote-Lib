@@ -140,9 +140,10 @@ data class Rotation2d(val re: Double, val im: Double) {
     operator fun times(b: Rotation2d) = Rotation2d(this.re * b.re - this.im * b.im, this.re * b.im + this.im * b.re)
     operator fun times(r2: Vector2d) = Vector2d(this.re * r2.x - this.im * r2.y, this.im * r2.x + this.re * r2.y)
     operator fun div(b: Rotation2d) = b.inverse * this
+    operator fun plus(incr: Double) = this * exp(incr)
 
     companion object {
-        val zero = Rotation2d.exp(0.0)
+        val zero = exp(0.0)
 
         fun exp(angleIncr: Double) = Rotation2d(cos(angleIncr), sin(angleIncr))
 
@@ -176,7 +177,7 @@ data class Rotation2dDual(val re: Dual, val im: Dual) {
         return equals(other)
     }
 
-    fun equals(other: Rotation2dDual) = re.equals(other.re) && im.equals(other.im)
+    fun equals(other: Rotation2dDual) = re == other.re && im == other.im
 
     override fun hashCode(): Int {
         var result = re.hashCode()

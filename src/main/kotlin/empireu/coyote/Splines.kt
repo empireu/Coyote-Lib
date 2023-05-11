@@ -528,12 +528,12 @@ fun IPositionSpline<Percentage>.project(
     return closest.coerceIn(0.0, 1.0)
 }
 
-private data class GetPointsFrame<TParameter>(val t0: Double, val t1: Double)
+private data class GetPointsFrame(val t0: Double, val t1: Double)
 
-data class CurvePoseParam<TParameter>(val curvePose: CurvePose2d, val param: Double)
+data class CurvePoseParametric<Param>(val curvePose: CurvePose2d, val param: Double)
 
-fun <TParameter> ICurvePoseSpline<TParameter>.getPointsWpi(
-    results: MutableList<CurvePoseParam<TParameter>>,
+fun <Param> ICurvePoseSpline<Param>.getPointsWpi(
+    results: MutableList<CurvePoseParametric<Param>>,
     t0: Double,
     t1: Double,
     admissibleT: Double,
@@ -546,9 +546,9 @@ fun <TParameter> ICurvePoseSpline<TParameter>.getPointsWpi(
     require(admissibleIncr.rotIncr > 0.0) { "Admissible rotation increment must be positive" }
     require(t0 < t1) { "Invalid parameters $t0 $t1" }
 
-    results.add(CurvePoseParam(this.evaluateCurvePose(t0), t0))
+    results.add(CurvePoseParametric(this.evaluateCurvePose(t0), t0))
 
-    val stack = ArrayDeque<GetPointsFrame<TParameter>>()
+    val stack = ArrayDeque<GetPointsFrame>()
     stack.addLast(GetPointsFrame(t0, t1))
 
     var iterations = 0
@@ -571,7 +571,7 @@ fun <TParameter> ICurvePoseSpline<TParameter>.getPointsWpi(
             stack.addLast(GetPointsFrame((current.t0 + current.t1) / 2.0, current.t1))
             stack.addLast(GetPointsFrame(current.t0, (current.t0 + current.t1) / 2.0))
         } else {
-            results.add(CurvePoseParam(end, current.t1))
+            results.add(CurvePoseParametric(end, current.t1))
             t = current.t1
         }
 

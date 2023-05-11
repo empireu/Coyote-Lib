@@ -14,24 +14,15 @@ fun map(v: Double, srcMin: Double, srcMax: Double, dstMin: Double, dstMax: Doubl
     return dstMin + (v - srcMin) * (dstMax - dstMin) / (srcMax - srcMin)
 }
 
-fun Double.mappedTo(srcMin: Double, srcMax: Double, dstMin: Double, dstMax: Double): Double {
-    return map(this, srcMin, srcMax, dstMin, dstMax)
-}
+fun Double.mappedTo(srcMin: Double, srcMax: Double, dstMin: Double, dstMax: Double): Double = map(this, srcMin, srcMax, dstMin, dstMax)
 
 /**
  * Linearly interpolates [a] to [b] using the 0-1 parameter [factor].
  * **The [factor] is not clamped implicitly!**
  * */
-fun lerp(a: Double, b: Double, factor: Double): Double {
-    return (1.0 - factor) * a + factor * b
-}
-
-fun approxEqual(a: Double, b: Double, epsilon: Double = 10e-6): Boolean =
-    abs(a - b) < epsilon
-
-fun Double.approxEquals(other: Double, epsilon: Double = 10e-6): Boolean =
-    approxEqual(this, other, epsilon)
-
+fun lerp(a: Double, b: Double, factor: Double): Double = (1.0 - factor) * a + factor * b
+fun approxEqual(a: Double, b: Double, epsilon: Double = 10e-6): Boolean = abs(a - b) < epsilon
+fun Double.approxEquals(other: Double, epsilon: Double = 10e-6): Boolean = approxEqual(this, other, epsilon)
 fun Double.sqrt() = sqrt(this)
 
 infix fun Double.approxEquals(other: Double): Boolean = approxEqual(this, other, 10e-6)
@@ -83,22 +74,33 @@ fun minNaN(a: Double, b: Double): Double {
 /**
  * Throws an error if [this] is [Double.NaN]
  * */
-fun Double.throwIfNan(): Double {
-    if (this.isNaN()) {
-        error("Value is NaN")
-    }
+fun Double.requireNotNaN(): Double {
+    require(!this.isNaN()) { "Value was NaN" }
 
     return this
 }
 
+/**
+ * Returns the square of this number.
+ * */
 fun Double.sqr(): Double = this * this
 
 /**
- * Returns [this] with the specified [sign].
+ * Returns [this] with the specified [sign]. NaN is not permitted in either [this] or [sign].
  * */
 fun Double.signed(sign: Double): Double {
-    this.throwIfNan()
-    sign.throwIfNan()
+    // Kotlin sign function docs:
+    /**
+     * Returns the first floating-point argument with the sign of the second floating-point argument.
+     * Note that unlike the StrictMath.copySign method,
+     * this method does not require NaN sign arguments to be treated as positive values;
+     * implementations are permitted to treat some NaN arguments as positive and other NaN arguments as negative to allow greater performance.
+     * */
+
+    // I added NaN handling here (with requireNotNaN, which will throw if the sign or this is NaN)
+
+    this.requireNotNaN()
+    sign.requireNotNaN()
 
     if (this == 0.0 || sign == 0.0) {
         return 0.0
@@ -109,6 +111,9 @@ fun Double.signed(sign: Double): Double {
     else this
 }
 
+/**
+ * Rounds the number to the specified number of [decimals].
+ * */
 fun Double.rounded(decimals: Int = 3): Double {
     var multiplier = 1.0
     repeat(decimals) { multiplier *= 10 }
@@ -132,8 +137,16 @@ data class Range(val min: Double, val max: Double) {
     val isValid get() = min.isFinite() && max.isFinite() && min < max
 }
 
+/**
+ * Intersects two numeric ranges.
+ * @return The intersection range. If the range is valid, as per [Range.isValid], an intersection does exist between [r1] and [r2]. If not, then [r1] and [r2] do not intersect.
+ * */
 fun intersect(r1: Range, r2: Range): Range = Range(max(r1.min, r2.min), min(r1.max, r2.max))
 
+/**
+ * [Dual Number](https://en.wikipedia.org/wiki/Dual_number) auto-differentiation.
+ * The algorithm is inspired by [Higher Order Automatic Differentiation with Dual Numbers](https://pp.bme.hu/eecs/article/view/16341).
+ * */
 class Dual private constructor(private val values: DoubleArray) {
     /**
      * Constructs a [Dual] from the value [x] and the [tail].
@@ -152,6 +165,10 @@ class Dual private constructor(private val values: DoubleArray) {
 
     val size get() = values.size
     val isReal get() = values.size == 1
+
+    /**
+     * Gets the first value in this [Dual].
+     * */
     val value get() = values[0]
 
     /**
@@ -262,18 +279,9 @@ fun pow(d: Dual, n: Double): Dual = d.function({ it.pow(n) }) { n * pow(it, n - 
 fun sqrt(d: Dual): Dual = d.function({ sqrt(it) }) { (Dual.const(1.0, d.size) / (Dual.const(2.0, d.size) * sqrt(it))) }
 fun Dual.sqr() = this * this
 
-// Sign-non-zero function from the SymForce paper.
-// Roadrunner uses this instead of the approximation method for sin(x)/x,
-// And it is cleaner in my opinion.
-
-fun signNonZero(a: Double): Double {
-    if (a >= 0.0) {
-        return 1.0;
-    }
-
-    return -1.0;
-}
-
+/**
+ * Epsilon Sign-Non-Zero function from the [SymForce](https://arxiv.org/abs/2204.07889) paper.
+ * */
 fun snzEps(a: Double): Double {
     if (a >= 0.0)
     {
