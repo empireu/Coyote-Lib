@@ -25,23 +25,41 @@ object MecanumKinematics {
 }
 
 object DifferentialKinematics {
-    // Calculated on paper, still needs to be tested on a robot.
-
     /**
      * Gets the distance traveled along the X axis.
      * @param rIncr The distance increment measured by the right wheel.
-     * @param lY The Y offset of the left wheel, from the center axis.
-     * @param lIncr The distance increment measured by the left wheel.
      * @param rY The Y offset of the right wheel, from the center axis.
+     * @param lIncr The distance increment measured by the left wheel.
+     * @param lY The Y offset of the left wheel, from the center axis.
      * */
-    fun forwardXIncr(rIncr: Double, lY: Double, lIncr: Double, rY: Double) = (rIncr * lY - lIncr * rY) / (lY - rY)
+    fun xIncr(rIncr: Double, rY: Double, lIncr: Double, lY: Double): Double = (rIncr * lY - lIncr * rY) / (lY - rY)
+    fun xIncrDual(rIncr: Dual, rY: Double, lIncr: Dual, lY: Double): Dual = (rIncr * lY - lIncr * rY) / (lY - rY)
 
     /**
      * Gets the angle increment.
      * @param rIncr The distance increment measured by the right wheel.
-     * @param lY The Y offset of the left wheel, from the center axis.
-     * @param lIncr The distance increment measured by the left wheel.
      * @param rY The Y offset of the right wheel, from the center axis.
+     * @param lIncr The distance increment measured by the left wheel.
+     * @param lY The Y offset of the left wheel, from the center axis.
      * */
-    fun forwardAngleIncr(rIncr: Double, lY: Double, lIncr: Double, rY: Double) = (rIncr - lIncr) / (lY - rY)
+    fun angleIncr(rIncr: Double, rY: Double, lIncr: Double, lY: Double): Double = (rIncr - lIncr) / (lY - rY)
+    fun angleIncrDual(rIncr: Dual, rY: Double, lIncr: Dual, lY: Double): Dual = (rIncr - lIncr) / (lY - rY)
+}
+
+object Odometry {
+    fun holo3WheelIncr(rIncr: Double, rY: Double, lIncr: Double, lY: Double, cIncr: Double, cX: Double): Twist2dIncr {
+        val rotIncr = DifferentialKinematics.angleIncr(rIncr, rY, lIncr, lY)
+        return Twist2dIncr(
+            xIncr = DifferentialKinematics.xIncr(rIncr, rY, lIncr, lY),
+            yIncr = cIncr - rotIncr * cX,
+            rotIncr)
+    }
+
+    fun holo3WheelIncrDual(rIncr: Dual, rY: Double, lIncr: Dual, lY: Double, cIncr: Dual, cX: Double): Twist2dIncrDual {
+        val rotIncr = DifferentialKinematics.angleIncrDual(rIncr, rY, lIncr, lY)
+        return Twist2dIncrDual(
+            xIncr = DifferentialKinematics.xIncrDual(rIncr, rY, lIncr, lY),
+            yIncr = cIncr - rotIncr * cX,
+            rotIncr)
+    }
 }

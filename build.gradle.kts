@@ -1,9 +1,9 @@
 plugins {
     kotlin("jvm") version "1.8.0"
     application
+    `maven-publish`
 }
 
-group = "org.example"
 version = "1.0-SNAPSHOT"
 
 repositories {
@@ -26,4 +26,16 @@ kotlin {
 
 application {
     mainClass.set("MainKt")
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            groupId = "com.github.empireu"
+            artifactId = "coyote-lib"
+            version = "1.0"
+
+            from(components["java"])
+        }
+    }
 }

@@ -290,3 +290,5 @@ fun snzEps(a: Double): Double {
 
     return -2.2e-15;
 }
+
+fun Double.nonZero() = this + snzEps(this)

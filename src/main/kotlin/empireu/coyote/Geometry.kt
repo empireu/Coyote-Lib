@@ -8,6 +8,7 @@ data class Vector2d(val x: Double, val y: Double) {
     val lengthSqr get() = x * x + y * y
     val length get() = sqrt(lengthSqr)
     fun normalized() = this / length
+    fun normalizedEps() = this / length.nonZero()
 
     fun approxEqs(other: Vector2d, eps: Double = 10e-6) = x.approxEquals(other.x, eps) && y.approxEquals(other.y, eps)
 
@@ -141,6 +142,7 @@ data class Rotation2d(val re: Double, val im: Double) {
     operator fun times(r2: Vector2d) = Vector2d(this.re * r2.x - this.im * r2.y, this.im * r2.x + this.re * r2.y)
     operator fun div(b: Rotation2d) = b.inverse * this
     operator fun plus(incr: Double) = this * exp(incr)
+    operator fun minus(b: Rotation2d) = (this / b).log()
 
     companion object {
         val zero = exp(0.0)
@@ -326,14 +328,13 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
 
     fun log(): Twist2dIncr {
         val angle = rotation.log()
-
-        val u2 = 0.5 * angle + snzEps(angle)
-        val halfTan = u2 / tan(u2)
+        val u = (0.5 * angle).nonZero()
+        val halfTan = u / tan(u)
 
         return Twist2dIncr(
             Vector2d(
-                halfTan * translation.x + u2 * translation.y,
-                -u2 * translation.x + halfTan * translation.y
+                halfTan * translation.x + u * translation.y,
+                -u * translation.x + halfTan * translation.y
             ),
             angle
         )
@@ -369,9 +370,7 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
 
     companion object {
         fun exp(incr: Twist2dIncr): Pose2d {
-            val rot = Rotation2d.exp(incr.rotIncr)
-
-            val u = incr.rotIncr + snzEps(incr.rotIncr)
+            val u = incr.rotIncr.nonZero()
             val c = 1.0 - cos(u)
             val s = sin(u)
 
@@ -380,7 +379,7 @@ data class Pose2d(val translation: Vector2d, val rotation: Rotation2d) {
                     (s * incr.trIncr.x - c * incr.trIncr.y) / u,
                     (c * incr.trIncr.x + s * incr.trIncr.y) / u
                 ),
-                rot
+                Rotation2d.exp(incr.rotIncr)
             )
         }
     }
