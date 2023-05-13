@@ -416,6 +416,7 @@ data class Pose2dDual(val translation: Vector2dDual, val rotation: Rotation2dDua
 
     operator fun times(b: Pose2dDual) = Pose2dDual(this.translation + this.rotation * b.translation, this.rotation * b.rotation)
     operator fun times(b: Pose2d) = Pose2dDual(this.translation + this.rotation * b.translation, this.rotation * b.rotation)
+    operator fun times(b: Twist2dDual) = Twist2dDual(rotation * b.trVelocity, b.rotVelocity)
     operator fun div(b: Pose2dDual) = b.inverse * this
     operator fun plus(incr: Twist2dIncr) = this * Pose2d.exp(incr)
 
