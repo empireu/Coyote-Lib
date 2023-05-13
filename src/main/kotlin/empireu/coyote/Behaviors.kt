@@ -617,3 +617,71 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
      * */
     private data class StorageValue(val fired: HashSet<MarkerListener>)
 }
+
+class RepeatNode(name: String, runOnce: Boolean, val repeatCount: Int, val child: BehaviorNode) : BehaviorNode(name, runOnce) {
+    init { require(repeatCount >= 1) { "Invalid repeat count $repeatCount" } }
+
+    override fun update(context: BehaviorContext): BehaviorStatus {
+        val storage = context.getOrStore(StorageKey(this)) { StorageValue() }
+        val status = child.getStatus(storage.context)
+
+        if(status == BehaviorStatus.Failure) {
+            return BehaviorStatus.Failure
+        }
+
+        if(status == BehaviorStatus.Success) {
+            storage.next()
+        }
+
+        if(storage.iterations == repeatCount) {
+            return BehaviorStatus.Success
+        }
+
+        return BehaviorStatus.Running
+    }
+
+    private data class StorageKey(val node: RepeatNode)
+
+    private class StorageValue {
+        var context = BehaviorContext()
+            private set
+
+        var iterations = 0
+            private set
+
+        fun next() {
+            ++iterations
+            context = BehaviorContext()
+        }
+    }
+}
+
+class RepeatUntilNode(name: String, runOnce: Boolean, val exitStatus: BehaviorStatus, val child: BehaviorNode) : BehaviorNode(name, runOnce) {
+    init { require(exitStatus != BehaviorStatus.Running) { "Invalid run until status $exitStatus" } }
+
+    override fun update(context: BehaviorContext): BehaviorStatus {
+        val storage = context.getOrStore(StorageKey(this)) { StorageValue() }
+        val status = child.getStatus(storage.context)
+
+        if(status != BehaviorStatus.Running) {
+            storage.next()
+        }
+
+        if(status == exitStatus) {
+            return BehaviorStatus.Success
+        }
+
+        return BehaviorStatus.Running
+    }
+
+    private data class StorageKey(val node: RepeatUntilNode)
+
+    private class StorageValue {
+        var context = BehaviorContext()
+            private set
+
+        fun next() {
+            context = BehaviorContext()
+        }
+    }
+}
