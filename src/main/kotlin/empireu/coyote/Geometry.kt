@@ -418,6 +418,10 @@ data class Pose2dDual(val translation: Vector2dDual, val rotation: Rotation2dDua
     operator fun times(b: Pose2d) = Pose2dDual(this.translation + this.rotation * b.translation, this.rotation * b.rotation)
     operator fun div(b: Pose2dDual) = b.inverse * this
     operator fun plus(incr: Twist2dIncr) = this * Pose2d.exp(incr)
+
+    companion object {
+        fun const(v: Pose2d, n: Int = 1) = Pose2dDual(Vector2dDual.const(v.translation, n), Rotation2dDual.const(v.rotation, n))
+    }
 }
 
 class VectorKd internal constructor(private val values: DoubleArray) {
