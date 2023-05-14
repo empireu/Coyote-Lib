@@ -111,7 +111,7 @@ data class JsonMotionProject(
     val hasRotationSpline get() = RotationPoints.isNotEmpty()
 
     fun createRotationSpline(): QuinticSplineMapped {
-        require(hasRotationSpline)
+        require(hasRotationSpline) { "Tried to create rotation spline without one present" }
 
         val builder = QuinticSplineMappedBuilder(1)
 

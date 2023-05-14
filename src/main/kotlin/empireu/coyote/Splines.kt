@@ -177,7 +177,7 @@ data class QuinticSplineSegment(val p0: VectorKd, val v0: VectorKd, val a0: Vect
 }
 
 fun validateSpline(segments: List<QuinticSplineSegment>) {
-    require(segments.isNotEmpty())
+    require(segments.isNotEmpty()) { "Quintic spline was empty" }
 
     if (segments.size == 1) {
         return
@@ -258,7 +258,7 @@ class QuinticSpline(val segments: List<QuinticSplineSegment>) :
     }
 
     fun computeArcLength(points: Int = 1024): Double {
-        require(points >= 2)
+        require(points >= 2) { "Cannot compute arc length with less than 2 points" }
 
         var result = 0.0
         val sampleSize = 1.0 / points
@@ -393,7 +393,7 @@ class QuinticSplineMapped(val segments: List<QuinticSplineSegmentMapped>) :
 
 class QuinticSplineMappedBuilder(val size: Int) {
     init {
-        require(size > 0)
+        require(size > 0) { "Cannot build mapped spline of size $size"}
     }
 
     private data class SplinePoint(
@@ -481,8 +481,8 @@ fun IPositionSpline<Percentage>.project(
     descentSteps: Int = 32,
     descentFalloff: Double = 1.25
 ) : Double {
-    require(projectionSamples > 0)
-    require(descentSteps > 1)
+    require(projectionSamples > 0) { "Cannot project with 0 samples" }
+    require(descentSteps > 1) { "Cannot project without at least 1 descent step" }
 
     var closest = 0.0
     var closestDistance = Double.MAX_VALUE

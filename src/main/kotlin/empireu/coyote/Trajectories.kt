@@ -285,7 +285,7 @@ object TrajectoryGenerator {
     }
 
     fun generateProfile(path: List<CurvePose2d>, constraints: BaseTrajectoryConstraints): ArrayList<TrajectoryPoint> {
-        require(path.size >= 2)
+        require(path.size >= 2) { "Cannot generate profile with less than 2 points" }
 
         val points = ArrayList<TrajectoryPoint>(path.size)
 
@@ -347,7 +347,7 @@ object TrajectoryGenerator {
                 if (condition < 0) {
                     vtAwRanges.add(Range(v2(), v1()))
                 } else {
-                    require(condition >= 0)
+                    require(condition >= 0) { "Condition $condition ci>0"}
 
                     vtAwRanges.add(Range(v2(), v2Star()))
                     vtAwRanges.add(Range(v1Star(), v1()))
@@ -358,13 +358,13 @@ object TrajectoryGenerator {
                 if (condition < 0) {
                     vtAwRanges.add(Range(v1Star(), v2Star()))
                 } else {
-                    require(condition >= 0)
+                    require(condition >= 0) { "Condition $condition ci<0"}
 
                     vtAwRanges.add(Range(v1Star(), v1()))
                     vtAwRanges.add(Range(v2(), v2Star()))
                 }
             } else {
-                require(ci == 0.0)
+                require(ci == 0.0) { "Ci $ci" }
 
                 if (ci1 > 0) {
                     vtAwRanges.add(Range(v1Hat(), v2Hat()))
@@ -418,7 +418,9 @@ object TrajectoryGenerator {
 
     fun solutionScan(vtAt: Range, vtAwRanges: List<Range>): Double {
         class ScanResult(val solution: Double, val error: Double) {
-            init { require(error >= 0.0) }
+            init {
+                require(error >= 0.0) { "Solution scan error is $error" }
+            }
         }
 
         fun intersectMidpoint(a: Range, b: Range): ScanResult {
@@ -482,7 +484,7 @@ class Trajectory(val source: List<TrajectoryPoint>) {
     val points get() = source.size
 
     init {
-        require(source.size >= 2)
+        require(source.size >= 2) { "Cannot build trajectory with less than 2 points" }
 
         val builder = SegmentTreeBuilder<Segment>()
 

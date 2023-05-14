@@ -61,7 +61,7 @@ data class Vector2dDual(val x: Dual, val y: Dual) {
 
     init {
         require(x.size == y.size) { "Dual X and Y must be of the same size" }
-        require(x.size > 0)
+        require(x.size > 0) { "X and Y must not be empty" }
     }
 
     val size get() = x.size
@@ -441,7 +441,7 @@ class VectorKd internal constructor(private val values: DoubleArray) {
     }
 
     init {
-        require(values.isNotEmpty())
+        require(values.isNotEmpty()) { "Cannot create vector with emoty value list" }
     }
 
     val size = values.size
@@ -540,21 +540,21 @@ fun distance(a: VectorKd, b: VectorKd) = distanceSqr(a, b).sqrt()
  * Validates that [vector] has the [requiredSize].
  * */
 fun validate(vector: VectorKd, requiredSize: Int) {
-    require(vector.size == requiredSize)
+    require(vector.size == requiredSize) { "Vector validation failed" }
 }
 
 /**
  * Validates that [a] has the same size as [b].
  * */
 fun validate(a: VectorKd, b: VectorKd) {
-    require(a.size == b.size)
+    require(a.size == b.size) { "Vector validation failed" }
 }
 
 /**
  * Validates that the vectors have the same size.
  * */
 fun validate(a: VectorKd, b: VectorKd, c: VectorKd, d: VectorKd, e: VectorKd, f: VectorKd) {
-    require(a.size == b.size && b.size == c.size && c.size == d.size && d.size == e.size && e.size == f.size)
+    require(a.size == b.size && b.size == c.size && c.size == d.size && d.size == e.size && e.size == f.size) { "Vector validation failed" }
 }
 
 fun Double.toKdVector() : VectorKd {

@@ -91,7 +91,7 @@ enum class BehaviorStatus {
                 return Failure
             }
 
-            require(a == Success && b == Success)
+            require(a == Success && b == Success) { "Unhandled AND case $a $b"}
 
             return Success
         }
@@ -254,7 +254,7 @@ class BehaviorParallelNode(name: String, runOnce: Boolean, children: List<Behavi
             }
 
             if(status != BehaviorStatus.Success) {
-                require(status == BehaviorStatus.Running)
+                require(status == BehaviorStatus.Running) { "Invalid parallel status" }
 
                 // Failure was ruled out above.
                 // As such, the status must be Running. We will continue updating child nodes, but we set "finished" to false in order to make sure we don't signal Success just yet.
@@ -618,7 +618,7 @@ class BehaviorMotionNode(createContext: BehaviorCreateContext, project: JsonProj
     private data class StorageValue(val fired: HashSet<MarkerListener>)
 }
 
-class RepeatNode(name: String, runOnce: Boolean, val repeatCount: Int, val child: BehaviorNode) : BehaviorNode(name, runOnce) {
+class BehaviorRepeatNode(name: String, runOnce: Boolean, val repeatCount: Int, val child: BehaviorNode) : BehaviorNode(name, runOnce) {
     init { require(repeatCount >= 1) { "Invalid repeat count $repeatCount" } }
 
     override fun update(context: BehaviorContext): BehaviorStatus {
@@ -640,7 +640,7 @@ class RepeatNode(name: String, runOnce: Boolean, val repeatCount: Int, val child
         return BehaviorStatus.Running
     }
 
-    private data class StorageKey(val node: RepeatNode)
+    private data class StorageKey(val node: BehaviorRepeatNode)
 
     private class StorageValue {
         var context = BehaviorContext()
@@ -656,7 +656,7 @@ class RepeatNode(name: String, runOnce: Boolean, val repeatCount: Int, val child
     }
 }
 
-class RepeatUntilNode(name: String, runOnce: Boolean, val exitStatus: BehaviorStatus, val child: BehaviorNode) : BehaviorNode(name, runOnce) {
+class BehaviorRepeatUntilNode(name: String, runOnce: Boolean, val exitStatus: BehaviorStatus, val child: BehaviorNode) : BehaviorNode(name, runOnce) {
     init { require(exitStatus != BehaviorStatus.Running) { "Invalid run until status $exitStatus" } }
 
     override fun update(context: BehaviorContext): BehaviorStatus {
@@ -674,7 +674,7 @@ class RepeatUntilNode(name: String, runOnce: Boolean, val exitStatus: BehaviorSt
         return BehaviorStatus.Running
     }
 
-    private data class StorageKey(val node: RepeatUntilNode)
+    private data class StorageKey(val node: BehaviorRepeatUntilNode)
 
     private class StorageValue {
         var context = BehaviorContext()
